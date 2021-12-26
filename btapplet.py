@@ -63,7 +63,9 @@ class BluetoothUI(App):
     def view_available(self):
         devices = self.bluetooth.get_available_devices(sort=True)
         for idx,data in enumerate(devices):
-            assert(idx < self.body.num_rows())
+            if(idx >= self.body.num_rows()):
+                continue
+
             text = "%d]\t %s\t%s\n" % (idx,data['mac'],data['name'])
             yield idx,text,data
 
@@ -71,8 +73,11 @@ class BluetoothUI(App):
     def view_paired(self):
         devices = self.bluetooth.get_paired_devices(sort=True)
         for idx,data in enumerate(devices):
-            assert(idx < self.body.num_rows())
+            if(idx >= self.body.num_rows()):
+                continue
+
             text = "%d]\t %s\t%s\n" % (idx,data['mac'],data['name'])
+            print(data)
             yield idx,text,data
 
 
@@ -80,7 +85,9 @@ class BluetoothUI(App):
     def view_discoverable(self):
         devices = self.bluetooth.get_discoverable_devices(sort=True)
         for idx,data in enumerate(devices):
-            assert(idx < self.body.num_rows())
+            if(idx >= self.body.num_rows()):
+                continue
+
             text = "%d]\t %s\t%s\n" % (idx,data['mac'],data['name'])
             yield idx,text,data
 
@@ -91,7 +98,6 @@ class BluetoothUI(App):
                     button = self.body.get_row(idx)
                     button.label = ""
                     button.model = None
-            self.body.update()
 
 
         def handler(shortcut):
@@ -145,12 +151,13 @@ class BluetoothUI(App):
         else:
             raise Exception("not handled")
 
-        """A message sent by the button widget"""
+
     async def on_mount(self, event: events.Mount) -> None:
         """Create and dock the widgets."""
 
         # A scrollview to contain the markdown file
-        self.bluetooth = bluelib.Bluetoothctl()
+        self.bluetooth = bluelib.Bluetoothctl(rfkill_unblock=False)
+        self.bluetooth.power_on()
 
         # Header / footer / dock
         self.header = Header()
