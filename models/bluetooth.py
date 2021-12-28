@@ -412,9 +412,8 @@ class Bluetoothctl:
         self.devices[mac_address]["paired"] = is_paired
         is_connected = "Connected" in data and data["Connected"]
         self.devices[mac_address]["connected"] = is_connected
-        is_connected = "Trusted" in data and data["Trusted"]
-        self.devices[mac_address]["trusted"] = is_connected
-        return is_paired
+        is_trusted = "Trusted" in data and data["Trusted"]
+        self.devices[mac_address]["trusted"] = is_trusted
 
 
     def pair(self, mac_address):
@@ -464,7 +463,7 @@ class Bluetoothctl:
 
     def trust(self, mac_address,sync=True):
 
-        if self.is_connected(mac_address):
+        if self.is_trusted(mac_address):
             return True
 
         try:
@@ -485,7 +484,7 @@ class Bluetoothctl:
 
     def untrust(self, mac_address,sync=True):
 
-        if self.is_connected(mac_address):
+        if not self.is_trusted(mac_address):
             return True
 
         try:

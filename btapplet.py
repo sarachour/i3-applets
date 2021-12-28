@@ -257,6 +257,7 @@ class BluetoothApplet:
                     self.unpause_scan()
 
 
+
         if self.scan_state == BluetoothApplet.ScanState.SCANNING:
             flags.append("scanning")
         elif self.scan_state == BluetoothApplet.ScanState.SCAN_PAUSED:
@@ -273,6 +274,11 @@ class BluetoothApplet:
             flags.append("pairing with %s" % self.target)
         elif self.action_state == BluetoothApplet.ActionState.UNPAIRING:
             flags.append("unpairing with %s" % self.target)
+        elif self.action_state == BluetoothApplet.ActionState.TRUSTING:
+            flags.append("trusting %s" % self.target)
+        elif self.action_state == BluetoothApplet.ActionState.UNTRUSTING:
+            flags.append("untrusting %s" % self.target)
+
 
 
         msg = " | ".join(flags)
