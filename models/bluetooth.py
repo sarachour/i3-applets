@@ -153,6 +153,7 @@ class Bluetoothctl:
             self.devices[mac] = dict({"online": False, \
                                  "paired": False, \
                                  "connected": False, \
+                                 "trusted": False, \
                                  "update_state": False, \
                                  "name": name, \
                                  "mac_addr": mac, \
@@ -386,13 +387,21 @@ class Bluetoothctl:
             infodict = self._process_device_info(out,mac_address)
             return infodict
 
-    def is_connected(self,mac_address):
-        self.update_device_status(mac_address)
+    def is_connected(self,mac_address,update=True):
+        if update:
+            self.update_device_status(mac_address)
         return self.devices[mac_address]["connected"]
 
-    def is_paired(self,mac_address):
-        self.update_device_status(mac_address)
+    def is_paired(self,mac_address,update=True):
+        if update:
+            self.update_device_status(mac_address)
         return self.devices[mac_address]["paired"]
+
+    def is_trusted(self,mac_address,update=True):
+        if update:
+            self.update_device_status(mac_address)
+        return self.devices[mac_address]["trusted"]
+
 
     def update_device_status(self,mac_address):
         data = self.get_device_info(mac_address)
@@ -403,6 +412,8 @@ class Bluetoothctl:
         self.devices[mac_address]["paired"] = is_paired
         is_connected = "Connected" in data and data["Connected"]
         self.devices[mac_address]["connected"] = is_connected
+        is_connected = "Trusted" in data and data["Trusted"]
+        self.devices[mac_address]["trusted"] = is_connected
         return is_paired
 
 
@@ -450,6 +461,50 @@ class Bluetoothctl:
             res = self.child.expect(["not available", "Device has been removed", pexpect.EOF])
             success = True if res == 1 else False
             return success
+
+    def trust(self, mac_address,sync=True):
+
+        if self.is_connected(mac_address):
+            return True
+
+        try:
+            self.clear_output()
+            out = self.wait_for_prompt("trust " + mac_address, 2)
+        except BluetoothctlError as e:
+            print(e)
+            return None
+
+        else:
+            if sync:
+                res = self.child.expect(["trust succeeded","not available", pexpect.EOF])
+                msg = self.get_output()
+                success = True if res == 1 else False
+                return success
+            else:
+                return None
+
+    def untrust(self, mac_address,sync=True):
+
+        if self.is_connected(mac_address):
+            return True
+
+        try:
+            self.clear_output()
+            out = self.wait_for_prompt("untrust " + mac_address, 2)
+        except BluetoothctlError as e:
+            print(e)
+            return None
+
+        else:
+            if sync:
+                res = self.child.expect(["untrust succeeded", "not available", pexpect.EOF])
+                msg = self.get_output()
+                success = True if res == 1 else False
+                return success
+            else:
+                return None
+
+
 
     def connect(self, mac_address,sync=True):
 

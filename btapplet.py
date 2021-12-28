@@ -3,6 +3,8 @@ from picotui.widgets import *
 from picotui.menu import *
 from picotui.defs import *
 
+from views.itemlist import WListBox2
+from views.pane import Pane
 import models.bluetooth as bluelib
 from threading import Thread, Timer
 import time
@@ -43,7 +45,9 @@ class BluetoothApplet:
         CONNECTING = 1
         UNPAIRING= 2
         DISCONNECTING = 3
-        IDLE = 4
+        TRUSTING = 4
+        UNTRUSTING = 5
+        IDLE = 6
 
 
 
@@ -80,19 +84,17 @@ class BluetoothApplet:
     def screen_redraw(self,allow_cursor=False):
         self.update_pane()
         self.update_status()
-        self.screen.attr_color(C_WHITE, C_BLUE)
-        self.screen.cls()
-        self.screen.attr_reset()
-        self.dialog.redraw()
 
-    def get_devices(self):
+    def get_devices(self, cached = False):
         update_scanned = self.scan_state == BluetoothApplet.ScanState.SCANNING
         update_paired = self.action_state != BluetoothApplet.ActionState.IDLE
-        if update_scanned:
-            self.bluetooth.flush_log()
+        if cached:
+            if update_scanned:
+                self.bluetooth.flush_log()
 
-        self.bluetooth.update_devices(update_scanned=update_scanned, \
-                                      update_paired=update_paired)
+            self.bluetooth.update_devices(update_scanned=update_scanned, \
+                                        update_paired=update_paired)
+
         return self.bluetooth.get_devices(sort=True)
 
     def update_pane(self):
@@ -113,6 +115,10 @@ class BluetoothApplet:
             else:
                 flag = " [*]  "
 
+            if data["trusted"]:
+                flag += "[tr]"
+            else:
+                flag += "    "
 
             text = "%d]%s %s %s\n" % (idx, \
                                       flag, \
@@ -121,7 +127,7 @@ class BluetoothApplet:
 
             entries.append(text)
 
-        self.frame.set_items(entries)
+        self.frame.set_lines(entries)
         self.dialog.redraw()
         #self.frame.redraw()
 
@@ -139,36 +145,44 @@ class BluetoothApplet:
 
     def setup_ui(self):
         width, height = Screen.screen_size()
+
         msg_height = 1
-        ypadding = 3
+        ypadding = 2
         xpadding = 4
-        frame_height = height - ypadding*4 - msg_height*3
-        frame_width = width - xpadding*2
+        frame_height = height - ypadding*6 - msg_height*4-1
+        frame_width = width - xpadding*2-1
 
-        self.dialog = Dialog(x=2,y=2,w=width, \
-                             h=height,  \
-                             title="bluetooth")
+        self.dialog = Pane(x=2,y=2,w=width, \
+                             h=height)
+        self.dialog.border_w = 0
+        self.dialog.border_h = 0
 
-        yoffset = ypadding
-        self.view_msg = WLabel(w=frame_width, text="<current view>")
-        self.dialog.add(x=2, y=yoffset, widget=self.view_msg)
+        yoffset=0
+        self.dialog.add(x=xpadding,y=yoffset, \
+                        widget=WLabel(w=frame_width, text="==== bluetooth applet ===="))
         yoffset += msg_height
         yoffset += ypadding
 
-        self.frame = WListBox(w=frame_width, h=frame_height, items=["a","b"])
+        self.view_msg = WLabel(w=frame_width, text="<current view>")
+        self.dialog.add(x=xpadding, y=yoffset, widget=self.view_msg)
+        yoffset += msg_height
+        yoffset += ypadding
+
+        self.frame = WListBox2(w=frame_width, h=frame_height, items=[])
         self.dialog.add(x=2,y=yoffset, widget=self.frame)
         yoffset += frame_height
 
         self.status_msg = WLabel(w=frame_width, text="<status line>")
         self.debug_msg = WLabel(w=frame_width, text="<feedback>")
-        self.help_msg = WLabel(w=frame_width, text="u:update | s:scan on/off | c: conn/disconn | x: del")
+        help_text = "s: scan on/off | c: conn/pair | t: trust/untrust | x: forget | q: quit"
+        self.help_msg = WLabel(w=frame_width, text=help_text)
 
         yoffset += ypadding
-        self.dialog.add(x=2, y=yoffset, widget=self.status_msg)
+        self.dialog.add(x=xpadding, y=yoffset, widget=self.status_msg)
         yoffset += msg_height
-        self.dialog.add(x=2, y=yoffset, widget=self.debug_msg)
+        self.dialog.add(x=xpadding, y=yoffset, widget=self.debug_msg)
         yoffset += msg_height
-        self.dialog.add(x=2, y=yoffset, widget=self.help_msg)
+        self.dialog.add(x=xpadding, y=yoffset, widget=self.help_msg)
 
         self.screen_redraw()
         Screen.set_screen_redraw(self.screen_redraw)
@@ -176,7 +190,7 @@ class BluetoothApplet:
         self.update_thread.start()
 
     def get_selected_device(self):
-        line_index = self.frame.cur_line
+        line_index = self.frame.choice
         return self.devices[line_index]
 
     def unpause_scan(self):
@@ -208,7 +222,8 @@ class BluetoothApplet:
 
         if self.action_state != BluetoothApplet.ActionState.IDLE:
             is_connected = self.bluetooth.is_connected(self.target)
-            is_paired = self.bluetooth.is_paired(self.target)
+            is_paired = self.bluetooth.is_paired(self.target,update=False)
+            is_trusted = self.bluetooth.is_trusted(self.target,update=False)
 
             if self.action_state == BluetoothApplet.ActionState.CONNECTING and \
             is_connected:
@@ -219,6 +234,17 @@ class BluetoothApplet:
             not is_connected:
                     self.action_state = BluetoothApplet.ActionState.IDLE
                     self.unpause_scan()
+
+            if self.action_state == BluetoothApplet.ActionState.TRUSTING and \
+            is_trusted:
+                    self.action_state = BluetoothApplet.ActionState.IDLE
+                    self.unpause_scan()
+
+            if self.action_state == BluetoothApplet.ActionState.UNTRUSTING and \
+            not is_trusted:
+                    self.action_state = BluetoothApplet.ActionState.IDLE
+                    self.unpause_scan()
+
 
             if self.action_state == BluetoothApplet.ActionState.PAIRING and \
             is_paired:
@@ -318,6 +344,39 @@ class BluetoothApplet:
                         self.update_msg("error: %s not connected" % dev["mac_addr"])
 
 
+                elif keystr == "t":
+                    dev = self.get_selected_device()
+                    target_mac = dev["mac_addr"]
+                    if self.action_state != BluetoothApplet.ActionState.IDLE:
+                        self.update_msg("failed. There is an action already in progress.")
+                        continue
+
+                    is_trusted = self.bluetooth.is_trusted(target_mac)
+                    is_paired = self.bluetooth.is_paired(target_mac)
+                    if not is_paired:
+                        self.update_msg("failed. Cannot trust an unpaired device.")
+                        continue
+
+                    if is_trusted:
+                        self.update_msg("untrusting %s" % (target_mac))
+                        self.target = target_mac
+                        self.action_state = BluetoothApplet.ActionState.UNTRUSTING
+                        self.pause_scan()
+                        self.bluetooth.untrust(self.target)
+                        self.update_status()
+
+                    else:
+                        self.update_msg("trusting %s" % (target_mac))
+                        self.target = target_mac
+                        self.action_state = BluetoothApplet.ActionState.TRUSTING
+                        self.pause_scan()
+                        self.bluetooth.trust(self.target)
+                        self.update_status()
+
+
+
+
+
 
                 elif keystr == "c":
                     dev = self.get_selected_device()
@@ -364,15 +423,16 @@ class BluetoothApplet:
                 if key == KEY_LEFT:
                     self.view_index -= 1
                     self.update_msg("view %s #devs=%d" % (self.view_state, \
-                                                       len(self.get_devices())))
+                                                       len(self.get_devices(cached=True))))
                     self.update_status()
-
+                    self.update_pane()
 
                 elif key == KEY_RIGHT:
                     self.view_index += 1
                     self.update_msg("view %s #devs=%d" % (self.view_state, \
-                                                       len(self.get_devices())))
+                                                       len(self.get_devices(cached=True))))
                     self.update_status()
+                    self.update_pane()
 
                 else:
                     res = self.dialog.handle_input(key)
